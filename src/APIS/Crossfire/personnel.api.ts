@@ -207,3 +207,27 @@ import axios from 'axios';
             console.error('Error executing API request:' + error);
         }
     }
+
+
+
+export async function deletePersonnel(objectID:any) {
+    try {
+        const response = await axios.delete(
+          `https://jci-osp-api-gateway-qa.osp-jci.com/api/Objects/Delete`,
+          {
+            params: {
+              type: 'SoftwareHouse.NextGen.Common.SecurityObjects.Personnel',
+              id: objectID
+            },
+            headers: {
+              'session-id': '72c16a90-7972-4b3a-9502-0ae01feb1eec',
+              'Content-Type': 'application/x-www-form-urlencoded'
+            }
+          }
+        );
+
+        console.log('Delete successful:', response.data);
+      } catch (error) {
+        console.error('Error executing API request:' + error);
+    }
+    }

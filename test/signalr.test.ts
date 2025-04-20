@@ -1,103 +1,89 @@
-import * as signalR from "@microsoft/signalr";
+import { createPersonnel,deletePersonnel } from '../src/APIS/Crossfire/personnel.api';
+import { createSignalRConnection } from '../src/utils/signalR';
 import axios from "axios";
-import { createPersonnel } from "../src/APIS/Crossfire/personnel.api";
 
-// dev
-// const baseURL = "jci-osp-api-gateway-dev.osp-jci.com";
-// const AppServerName= "vm-osp-data-ser";
-// const ServerGuid= "dbe3376c-85bc-4510-a697-8df59cfd7256";
-// const CrossfireServerUri= "net.tcp://10.2.0.6:8999/CrossFire/IClientSession";
-
-// qa
 const baseURL = "jci-osp-api-gateway-qa.osp-jci.com";
-const AppServerName= "osp-qa-win-vm";
-const ServerGuid= "9c018651-fcda-4a62-8c17-9889a0825510";
-const CrossfireServerUri= "net.tcp://10.6.1.5:8999/CrossFire/IClientSession";
-
-describe("🧪 SignalR Enterprise Test", () => {
-
-    it("should receive a SignalR notification after personnel creation", async () => {
-        const ApplicationId = generateRandomString(12);
-        let messageReceived: any = null;
-
-        console.log(`[${new Date().toISOString()}] 🔧 Starting test with Application ID: ${ApplicationId}`);
-
-        const connection = new signalR.HubConnectionBuilder()
-            .withUrl(`https://${baseURL}/NotificationHub`, )
-            .withAutomaticReconnect()
-            .configureLogging(signalR.LogLevel.Information)
-            .build();
-
-        connection.onclose(err => console.error(`[${timestamp()}] ❌ Connection closed:`, err));
-        connection.onreconnecting(err => console.warn(`[${timestamp()}] 🔄 Reconnecting...`, err));
-        connection.onreconnected(id => console.log(`[${timestamp()}] ✅ Reconnected. Conn ID: ${id}`));
+const AppServerName = "osp-qa-win-vm";
+const ServerGuid = "9c018651-fcda-4a62-8c17-9889a0825510";
+const CrossfireServerUri = "net.tcp://10.6.1.5:8999/CrossFire/IClientSession";
 
 
-        const interval =  setInterval(() => {
-            console.log("⏱ Still connected?", connection.state , new Date().toUTCString()); // Should be "Connected"
-        }, 5000);
+describe('SignalR Tests', () => {
+    let connection: signalR.HubConnection;
+    let messagePayload: any;
+    const ApplicationId = generateRandomString(12);
+    let objectId: any = null
 
+    before(async () => {
+        connection = await createSignalRConnection(`https://${baseURL}/NotificationHub`);
+    });
 
-        const messagePromise = new Promise<any>((resolve, reject) => {
-            const timeout = setTimeout(() => {
-                reject(new Error("❌ Did not receive message within expected time"));
-            }, 220000); // 60s timeout
+    after(async () => {
+        await connection.stop();
+    });
 
-            connection.on("ReceiveMessage", (message: any) => {
-                console.log(`[${timestamp()}] 📩 Received message:`, message);
-                messageReceived = message;
-                clearTimeout(timeout);
-                clearInterval(interval)
-                resolve(message);
+    it('Should receive ObjectCreated notification', async () => {
+        await new Promise((res) => setTimeout(res, 10000));
+        await subscribeToNotifications(ApplicationId, connection.connectionId);
+        await registerToNotifications(ApplicationId);
+        await registerTypeToNotifications(ApplicationId);
+        let createdobjectid = await createPersonnel()
+        objectId = createdobjectid?.data.ObjectID
+        const received = await new Promise<boolean>((resolve) => {
+            connection.on('ReceiveMessage', (message: string) => {
+                const parsed = JSON.parse(message);
+                console.log("🔔 Received:", parsed);
+
+                if (parsed.NotificationType === 'ObjectCreated' && parsed.NotificationDSO.ObjectID === objectId) {
+                    messagePayload = parsed;
+                    resolve(parsed.NotificationDSO.ObjectID);
+                }
             });
+
+            // Timeout safeguard
+            setTimeout(() => resolve(false), 10000);
         });
 
-        try {
-            await connection.start();
-            // await connection.invoke("SendMessage", "Hello!");
-            console.log(`[${timestamp()}] ✅ SignalR connected, Conn ID: ${connection.connectionId}`);
+        // await unregisterTypeToNotifications(ApplicationId);
+        // await unregisterToNotifications(ApplicationId);
+        // await unsubscribeToNotifications(ApplicationId);
 
-            await subscribeToNotifications(ApplicationId, connection.connectionId);
-            await registerToNotifications(ApplicationId);
-            await registerTypeToNotifications(ApplicationId);
 
-            // await createPersonnel(); // Triggers SignalR event
-
-            // Wait for message or timeout
-            await new Promise((res) => setTimeout(res, 180000));
-
-            console.log("Hitting Personnel")
-            await createPersonnel();
-            await messagePromise;
-            // await new Promise((res) => setTimeout(res, 25000));
-            // expect(messageReceived).toBeDefined();
-            // expect(typeof messageReceived).toBe("string"); // or shape check based on your backend
-
-            console.log(`[${timestamp()}] 🎉 Test passed: Message received`);
-        } catch (error) {
-            console.error(`[${timestamp()}] 🚨 Test failed:`, error);
-            throw error;
-        } finally {
-            await unregisterTypeToNotifications(ApplicationId);
-            await unregisterToNotifications(ApplicationId);
-            await unsubscribeToNotifications(ApplicationId);
-            await stopConnection(connection);
-        }
+        // expect(received).toBe(objectId);
+        // expect(messagePayload.NotificationDSO.ClassType).toBe("SoftwareHouse.NextGen.Common.SecurityObjects.Personnel");
     });
+
+    it('Should receive ObjectDeleted notification', async () => {
+        await new Promise((res) => setTimeout(res, 10000));
+
+        // const ApplicationId = generateRandomString(12);
+        // await subscribeToNotifications(ApplicationId, connection.connectionId);
+        await registerTypeDeleteNotifications(ApplicationId);
+        // await registerTypeToNotifications(ApplicationId);
+
+        await deletePersonnel(objectId)
+        const received = await new Promise<boolean>((resolve) => {
+            connection.on('ReceiveMessage', (message: string) => {
+                const parsed = JSON.parse(message);
+
+                if (parsed.NotificationType === 'ObjectDeleted' && parsed.NotificationDSO.ObjectID === objectId) {
+                    resolve(parsed.NotificationDSO.ObjectID);
+                }
+            });
+
+            // Timeout safeguard
+            setTimeout(() => resolve(false), 10000);
+        });
+
+        // await unregisterTypeToNotifications(ApplicationId);
+        // await unregisterToNotifications(ApplicationId);
+        // await unsubscribeToNotifications(ApplicationId);
+
+    });
+
+    // Add more tests for ObjectDeleted, StatusChanged, etc.
 });
 
-// 🛠 Timestamped logging helper
-function timestamp() {
-    return new Date().toISOString();
-}
-
-// ✅ Existing axios methods below stay unchanged
-// Keep your subscribeToNotifications, registerToNotifications, etc.
-
-function generateRandomString(length: number) {
-    const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    return Array.from({ length }, () => characters.charAt(Math.floor(Math.random() * characters.length))).join("");
-}
 
 
 async function subscribeToNotifications(ApplicationId: any, connectionId: any) {
@@ -136,6 +122,72 @@ async function registerToNotifications(ApplicationId: any) {
         console.log("Error for register:" + err);
     }
 }
+
+
+
+
+
+
+
+function generateRandomString(length: number) {
+    const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    return Array.from({ length }, () => characters.charAt(Math.floor(Math.random() * characters.length))).join("");
+}
+
+
+async function registerTypeUpdateNotifications(ApplicationId: any) {
+
+    try {
+
+        const updateResponse = await axios.put(
+            `https://${baseURL}/api/NotificationHub/registertype`, // Replace with your backend API
+            {
+                ApplicationId: ApplicationId,
+                EventTypeFullName: "SoftwareHouse.CrossFire.Common.Core.ObjectChangedEventArgs",
+                RequestedObjects: [
+                    "SoftwareHouse.NextGen.Common.SecurityObjects.Personnel"]
+            },
+        );
+
+        console.log("RegisterType Response: " + updateResponse.data);
+        console.log("RegisterType Status Code: " + updateResponse.status);
+
+    }
+    catch (err) {
+        console.log("Error for registerType:" + err);
+    }
+
+
+}
+
+async function registerTypeDeleteNotifications(ApplicationId: any) {
+
+    try {
+
+        const deleteResponse = await axios.put(
+            `https://${baseURL}/api/NotificationHub/registertype`, // Replace with your backend API
+            {
+                ApplicationId: ApplicationId,
+                EventTypeFullName: "SoftwareHouse.CrossFire.Common.Core.ObjectDeletedEventArgs",
+                RequestedObjects: [
+                    "SoftwareHouse.NextGen.Common.SecurityObjects.Personnel"]
+            },
+        );
+
+        console.log("RegisterTypeDelete Response: " + deleteResponse.data);
+        console.log("RegisterTypeDelete Status Code: " + deleteResponse.status);
+
+    }
+    catch (err) {
+        console.log("Error for registerType:" + err);
+    }
+
+
+}
+
+
+
+
 
 async function registerTypeToNotifications(ApplicationId: any) {
     console.log("Calling RegisterType");
@@ -230,7 +282,7 @@ async function stopConnection(connection: any) {
 }
 
 
-async function rejoinToNotifications(ApplicationId:any,connectionId:any) {
+async function rejoinToNotifications(ApplicationId: any, connectionId: any) {
     try {
         const response = await axios.put(
             `https://${baseURL}/api/NotificationHub/rejoin`, // Replace with your backend API
@@ -240,6 +292,6 @@ async function rejoinToNotifications(ApplicationId:any,connectionId:any) {
             },
         );
     } catch (err) {
-        console.log("Error while rejoining:"+ err);
+        console.log("Error while rejoining:" + err);
     }
-  }
+}
