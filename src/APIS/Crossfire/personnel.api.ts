@@ -190,7 +190,7 @@ import axios from 'axios';
             };
 
             const headers = {
-                'session-id': '6f16e8f9-16ff-e244-b138-74c761e5ace7',
+                'session-id': 'c2b95e5a-0720-b703-97a9-69a00a7fde88',
                 'Content-Type': 'application/x-www-form-urlencoded'
             };
 
@@ -220,7 +220,7 @@ export async function deletePersonnel(objectID:any) {
               id: objectID
             },
             headers: {
-              'session-id': '72c16a90-7972-4b3a-9502-0ae01feb1eec',
+              'session-id': 'c2b95e5a-0720-b703-97a9-69a00a7fde88',
               'Content-Type': 'application/x-www-form-urlencoded'
             }
           }
